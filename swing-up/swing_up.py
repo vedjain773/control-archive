@@ -82,18 +82,18 @@ def calculate_cost(x, x_target, u):
 # Backpass
 def backPass(x_traj, u_traj, list_A, list_B, x_target, N, Q_f):
     diff = x_traj[N - 1] - x_target
-    Vx = 2 @ Q_f @ diff
-    Vxx = 2 @ Q_f
+    Vx = 2 * (Q_f @ diff)
+    Vxx = 2 * (Q_f)
 
     list_k = []
     list_K = []
 
-    for i in range(N - 1, -1, -1):
+    for i in range(N - 2, -1, -1):
         diff = x_traj[i] - x_target
-        lx = 2 @ Q @ diff
-        lu = 2 @ R @ u_traj[i]
-        lxx = 2 @ Q
-        luu = 2 @ R
+        lx = 2 * (Q @ diff)
+        lu = 2 * (R @ u_traj[i])
+        lxx = 2 * (Q)
+        luu = 2 * (R)
 
         Qx = lx + np.transpose(list_A[i]) @ Vx
         Qu = lu + np.transpose(list_B[i]) @ Vx
@@ -110,7 +110,7 @@ def backPass(x_traj, u_traj, list_A, list_B, x_target, N, Q_f):
         list_k.append(k)
         list_K.append(K)
 
-        Vx = Qx - np.transpose(Qu) @ Quu_i @ Qux
+        Vx = Qx - np.transpose(Qux) @ Quu_i @ Qu
         Vxx = Qxx - np.transpose(Qux) @ Quu_i @ Qux
 
     return (list_k, list_K)
@@ -140,18 +140,21 @@ def forward_pass(x_0, x_traj, u_traj, list_k, list_K, alpha, N, dt):
     return (x_traj_new, u_traj_new)
 
 
-N = 100
+N = 200
 x_target = np.array([[0], [0], [0], [0]])
 
 x_0 = np.array([[0], [0], [3.14], [0]])
 x_t = np.array([[0.0], [0.0], [0.0], [0.0]])
 
 Q = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 100, 0], [0, 0, 0, 10]])
-R = np.array([[0.1]])
+R = np.array([[1.325]])
 
-Q_f = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 200, 0], [0, 0, 0, 50]])
+Q_f = np.array([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 300, 0], [0, 0, 0, 50]])
 x_traj = [x_0]
-u_traj = [np.zeros((1, 1)) for _ in range(N)]
+u_traj = [np.zeros((1, 1)) for _ in range(N - 1)]
+
+dt_sim = 0.01
+dt = 0
 
 
 # Training loop
@@ -173,6 +176,7 @@ def main_loop(numIter):
     cost += (x_traj[-1] - x_target).T @ Q_f @ (x_traj[-1] - x_target)
 
     for i in range(0, numIter):
+        print(f"Iteration {i}: x_len={len(x_traj)}, u_len={len(u_traj)}")
         alpha = 1
         list_A = []
         list_B = []
@@ -203,6 +207,12 @@ def main_loop(numIter):
         while cost_new > cost:
             cost_new = 0
             alpha *= 0.5
+
+            if alpha < 1e-5:
+                x_traj_new, u_traj_new = x_traj, u_traj
+                cost_new = cost
+                break
+
             x_traj_new, u_traj_new = forward_pass(
                 x_0, x_traj, u_traj, list_k, list_K, alpha, N, dt_sim
             )
@@ -225,17 +235,16 @@ length_c = 1
 width_c = 2
 g = 9.8
 
+main_loop(100)
+
 # pygame setup
 pygame.init()
-screen = pygame.display.set_mode((600, 600))
+screen = pygame.display.set_mode((1000, 600))
 clock = pygame.time.Clock()
 running = True
 
 scr_height = screen.get_height()
 scr_width = screen.get_width()
-
-dt_sim = 0.01
-dt = 0
 
 pivot_pos = [scr_width / 2, scr_height / 2]
 tip_pos = [scr_width / 2, scr_height / 2 - scale(length_p)]
@@ -249,53 +258,58 @@ box = pygame.Rect(
     pivot_pos[0] - scale((width_c / 2)), pivot_pos[1], scale(width_c), scale(length_c)
 )
 
-main_loop(50)
+frame_counter = 0
 
-# while running:
-#     dt = clock.tick(60) / 1000
+while running:
+    dt = clock.tick(60) / 1000
 
-#     # poll for events
-#     # pygame.QUIT event means the user clicked X to close your window
+    # poll for events
+    # pygame.QUIT event means the user clicked X to close your window
 
-#     accumulator += dt
+    accumulator += dt
 
-#     for event in pygame.event.get():
-#         if event.type == pygame.QUIT:
-#             running = False
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
 
-#     # fill the screen with a color to wipe away anything from last frame
-#     screen.fill("black")
+    # fill the screen with a color to wipe away anything from last frame
+    screen.fill("black")
 
-#     if accumulator > dt_sim:
-#         # RENDER YOUR GAME HERE
+    if accumulator > dt_sim:
+        # RENDER YOUR GAME HERE
 
-#         x_next = dynamics(x_0, 0, dt_sim)
-#         x_0 = x_next.copy()
+        x_next = x_traj[frame_counter % len(x_traj)]
+        x_0 = x_next.copy()
 
-#         pivot_pos[0] = scr_width / 2 + scale(x_0[0, 0])
+        pivot_pos[0] = scr_width / 2 + scale(x_0[0, 0])
 
-#         box.update(
-#             pivot_pos[0] - scale((width_c / 2)),
-#             pivot_pos[1],
-#             scale(width_c),
-#             scale(length_c),
-#         )
+        box.update(
+            pivot_pos[0] - scale((width_c / 2)),
+            pivot_pos[1],
+            scale(width_c),
+            scale(length_c),
+        )
 
-#         tip_pos = rotPoint(
-#             pivot_pos[0], scr_height / 2 - scale(length_p), length_p, x_0[2, 0]
-#         )
+        tip_pos = rotPoint(
+            pivot_pos[0], scr_height / 2 - scale(length_p), length_p, x_0[2, 0]
+        )
 
-#         pygame.draw.rect(screen, "white", box, 1)
-#         pygame.draw.line(screen, "white", pivot_pos, tip_pos)
+        pygame.draw.rect(screen, "white", box, 1)
+        pygame.draw.line(screen, "white", pivot_pos, tip_pos)
 
-#         font = pygame.font.Font("./IBM_Plex_Mono/IBMPlexMono-Regular.ttf", 13)
-#         text = font.render(f"angle: {x_0[0, 0]}\nForce: {0}", True, "white")
-#         textpos = text.get_rect(centerx=screen.get_width() / 2, y=10)
-#         screen.blit(text, textpos)
+        font = pygame.font.Font("../assets/IBM_Plex_Mono/IBMPlexMono-Regular.ttf", 13)
+        text = font.render(
+            f"angle: {x_0[3, 0]}\nForce: {u_traj[frame_counter - 1][0]}",
+            True,
+            "white",
+        )
+        textpos = text.get_rect(centerx=screen.get_width() / 2, y=10)
+        screen.blit(text, textpos)
 
-#         accumulator -= dt_sim
+        accumulator -= dt_sim
+        frame_counter += 1
 
-#     # flip() the display to put your work on screen
-#     pygame.display.flip()
+    # flip() the display to put your work on screen
+    pygame.display.flip()
 
-# pygame.quit()
+pygame.quit()
